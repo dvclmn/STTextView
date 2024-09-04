@@ -1,7 +1,8 @@
 #if os(macOS)
 import XCTest
-@testable import STTextViewAppKit
+@testable import STTextView
 
+@MainActor
 class ContentTests : XCTestCase {
 
     func testContentUpdate() {

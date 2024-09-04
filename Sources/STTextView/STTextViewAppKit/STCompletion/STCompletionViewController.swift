@@ -61,7 +61,9 @@ open class STCompletionViewController: NSViewController, STCompletionViewControl
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        
+        let insets: CGFloat = 30
+//        scrollView.contentInsets = NSEdgeInsets(top: insets, left: insets, bottom: insets, right: insets)
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
         scrollView.borderType = .noBorder
@@ -72,7 +74,7 @@ open class STCompletionViewController: NSViewController, STCompletionViewControl
         view.addSubview(scrollView)
         NSLayoutConstraint.activate(
             [
-                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+                scrollView.topAnchor.constraint(equalTo: view.topAnchor, constant: insets),
                 scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                 scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor)

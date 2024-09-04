@@ -310,6 +310,8 @@ import AVFoundation
             heightTracksTextView
         }
     }
+    
+    public var onHeightUpdate: EditorHeightUpdate = { _ in }
 
     /// A Boolean that controls whether the text view highlights the currently selected line.
     @Invalidating(.layout)
@@ -732,10 +734,30 @@ import AVFoundation
             textFinder.client = textFinderClient
             textFinder.findBarContainer = enclosingScrollView
 
-            // setup registerd plugins
+            // setup registered plugins
             setupPlugins()
+            
+            self.onHeightUpdate(self.editorHeight)
+            
+
         }
 
+    }
+    
+    public var editorHeight: CGFloat {
+        
+        let tlm = self.textLayoutManager
+        let buffer: CGFloat = 120
+        
+        guard let height = tlm.typographicBounds(in: tlm.documentRange)?.height
+        else {
+            print("Couldn't get height from `tlm.typographicBounds(in: tlm.documentRange)?.height`")
+            return .zero
+        }
+        
+//        self.onHeightUpdate(height)
+        
+        return height + buffer
     }
 
     open override func hitTest(_ point: NSPoint) -> NSView? {
@@ -1137,12 +1159,15 @@ import AVFoundation
         // size.width += textContainerInset.width * 2;
         // size.height += textContainerInset.height * 2;
 
-        var horizontalInsets: CGFloat = 0
-        var verticalInsets: CGFloat = 0
+        var horizontalInsets: CGFloat = 30
+        var verticalInsets: CGFloat = 30
+        
         if let clipView = scrollView?.contentView as? NSClipView {
             horizontalInsets = clipView.contentInsets.horizontalInsets
             verticalInsets = clipView.contentInsets.verticalInsets
         }
+        
+//        print("Insets: X: \(horizontalInsets), Y: \(verticalInsets)")
 
         // if isVerticallyResizable {
         //     // we should at least be the visible size if we're not in a clip view
@@ -1171,7 +1196,7 @@ import AVFoundation
         let gutterPadding = gutterView?.bounds.width ?? 0
         size.width += gutterPadding
 
-        logger.debug("proposed size (\(size.width), \(size.height)) \(#function)")
+//        logger.debug("proposed size (\(size.width), \(size.height)) \(#function)")
 
         if !frame.size.isAlmostEqual(to: size) {
             self.setFrameSize(size)

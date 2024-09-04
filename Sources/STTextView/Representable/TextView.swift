@@ -3,68 +3,8 @@
 
 import Foundation
 import SwiftUI
-import STTextView
 
-/// This SwiftUI view can be used to view and edit rich text.
-//@MainActor @preconcurrency
-//public struct TextView: SwiftUI.View, TextViewModifier {
-//
-//    @frozen
-//    public struct Options: OptionSet {
-//        public let rawValue: Int
-//
-//        public init(rawValue: Int) {
-//            self.rawValue = rawValue
-//        }
-//
-//        /// Breaks the text as needed to fit within the bounding box.
-//        public static let wrapLines = Options(rawValue: 1 << 0)
-//
-//        /// Highlighted selected line
-//        public static let highlightSelectedLine = Options(rawValue: 1 << 1)
-//
-//        /// Enable to show line numbers in the gutter.
-//        public static let showLineNumbers = Options(rawValue: 1 << 2)
-//    }
-//
-//    @Environment(\.colorScheme) private var colorScheme
-//    @Binding private var text: AttributedString
-//    @Binding private var selection: NSRange?
-//    private let options: Options
-//    private let plugins: [any STPlugin]
-//    var height: (CGFloat) -> Void
-//
-//    /// Create a text edit view with a certain text that uses a certain options.
-//    /// - Parameters:
-//    ///   - text: The attributed string content
-//    ///   - options: Editor options
-//    ///   - plugins: Editor plugins
-//    public init(
-//        text: Binding<AttributedString>,
-//        selection: Binding<NSRange?> = .constant(nil),
-//        options: Options = [],
-//        plugins: [any STPlugin] = [],
-//        height: @escaping (CGFloat) -> Void
-//    ) {
-//        _text = text
-//        _selection = selection
-//        self.options = options
-//        self.plugins = plugins
-//        self.height = height
-//    }
-//
-//    public var body: some View {
-//        TextViewRepresentable(
-//            text: $text,
-//            selection: $selection,
-//            options: options,
-//            plugins: plugins
-//        ) { height in
-//            
-//        }
-//        .background(.background)
-//    }
-//}
+public typealias EditorHeightUpdate = (_ height: CGFloat) -> Void
 
 public struct TextViewRepresentable: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
@@ -73,22 +13,19 @@ public struct TextViewRepresentable: NSViewRepresentable {
 
     @Binding private var text: AttributedString
     @Binding private var selection: NSRange?
-//    private let options: TextView.Options
     private var plugins: [any STPlugin]
-    var height: (CGFloat) -> Void
+    var editorHeight: (CGFloat) -> Void
 
     public init(
         text: Binding<AttributedString>,
         selection: Binding<NSRange?>,
-//        options: TextView.Options,
         plugins: [any STPlugin] = [],
-        height: @escaping (CGFloat) -> Void
+        height: @escaping EditorHeightUpdate = { _ in }
     ) {
         self._text = text
         self._selection = selection
-//        self.options = options
         self.plugins = plugins
-        self.height = height
+        self.editorHeight = height
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
@@ -96,16 +33,22 @@ public struct TextViewRepresentable: NSViewRepresentable {
         let textView = scrollView.documentView as! STTextView
         textView.textDelegate = context.coordinator
         textView.highlightSelectedLine = false
-        textView.isHorizontallyResizable = true
+        textView.isHorizontallyResizable = false
         textView.showsLineNumbers = false
         textView.textSelection = NSRange()
-
+        textView.textContainer.lineFragmentPadding = 30
+        
+        
         context.coordinator.isUpdating = true
         textView.attributedText = NSAttributedString(styledAttributedString(textView.typingAttributes))
         context.coordinator.isUpdating = false
 
         for plugin in plugins {
             textView.addPlugin(plugin)
+        }
+        
+        textView.onHeightUpdate = { height in
+            DispatchQueue.main.async { self.editorHeight(height) }
         }
 
         return scrollView
@@ -186,7 +129,7 @@ public struct TextViewRepresentable: NSViewRepresentable {
                     self.isDidChangeText = true
                     self.parent.text = newTextValue
                     
-                    self.parent.height(textView.textLayoutManager.usageBoundsForTextContainer.height)
+                    self.parent.editorHeight(textView.editorHeight)
                 }
             }
         }
