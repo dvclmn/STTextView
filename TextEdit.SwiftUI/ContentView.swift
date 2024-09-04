@@ -2,7 +2,7 @@
 //  https://github.com/krzyzanowskim/STTextView/blob/main/LICENSE.md
 
 import SwiftUI
-import STTextViewSwiftUI
+import STTextView
 
 #if canImport(AppKit) && !targetEnvironment(macCatalyst)
 typealias Font = NSFont
