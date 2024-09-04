@@ -39,14 +39,13 @@ class TypingAttributesTests : XCTestCase {
         // I don't understand what it does to the font attribute but it's wrong.
         // nstv.insertText(attributedString, replacementRange: NSRange(location: 0, length: 0))
         let attributedString = NSAttributedString(string: "0123456789", attributes: [.font: NSFont.systemFont(ofSize: 44)])
-
         nstv.textStorage?.insert(attributedString, at: 0)
         XCTAssertTrue(nstv.string.utf16.count == 10)
 
         sttv.insertText(attributedString, replacementRange: NSRange(location: 0, length: 0))
-        XCTAssertEqual(nstv.string.utf16.count, sttv.string.utf16.count)
+        XCTAssertEqual(nstv.string.utf16.count, sttv.text!.utf16.count)
 
-        XCTAssertEqual(nstv.font, sttv.font)
+        XCTAssertEqual(nstv.typingAttributes[.font] as? NSFont, sttv.typingAttributes[.font] as? NSFont)
         XCTAssertEqual(nstv.selectedRange(), sttv.selectedRange())
     }
 
@@ -62,7 +61,7 @@ class TypingAttributesTests : XCTestCase {
 
     func testSetFontContent() {
         let textView = STTextView()
-        textView.string = "0123456789"
+        textView.text! = "0123456789"
         XCTAssertNotNil(textView.font)
 
         textView.font = NSFont.boldSystemFont(ofSize: 99)
@@ -73,7 +72,7 @@ class TypingAttributesTests : XCTestCase {
 
     func testSetFontContentRange() {
         let textView = STTextView()
-        textView.string = "0123456789"
+        textView.text! = "0123456789"
         let beforeChange = textView.typingAttributes
         // "12" is size of 55
         textView.addAttributes([.font: NSFont.systemFont(ofSize: 55)], range: NSRange(location: 1, length: 2))

@@ -4,9 +4,11 @@
 //
 //  STTextView
 //      |---selectionView
+//              |---(STLineHighlightView | SelectionHighlightView)
 //      |---contentView
 //              |---(STInsertionPointView | STTextLayoutFragmentView)
 //      |---decorationView
+//      |---gutterView
 //
 //
 // The default implementation of the NSView method inputContext manages
@@ -83,87 +85,74 @@ import AVFoundation
     @Invalidating(.display, .insertionPoint)
     @objc dynamic open var insertionPointColor: NSColor = .defaultTextInsertionPoint
 
-    /// The font of the text.
+    /// The font of the text. Default font.
     ///
-    /// This property applies to the entire text string.
     /// Assigning a new value to this property causes the new font to be applied to the entire contents of the text view.
-    @objc dynamic open var font: NSFont? {
+    /// If you want to apply the font to only a portion of the text, you must create a new attributed string with the desired style information and assign it
+    @MainActor
+    @objc public var font: NSFont {
         get {
-            // if not empty, return a font at location 0
-            if !textLayoutManager.documentRange.isEmpty {
-                let location = textLayoutManager.documentRange.location
-                let endLocation = textLayoutManager.location(location, offsetBy: 1)
-                return textLayoutManager.textContentManager?.attributedString(in: NSTextRange(location: location, end: endLocation))?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-            }
-
-            // otherwise return current typing attribute
-            return typingAttributes[.font] as? NSFont
+            _defaultTypingAttributes[.font] as! NSFont
         }
 
         set {
-            guard let newValue else {
-                NSException(name: .invalidArgumentException, reason: "nil NSFont given").raise()
-                return
-            }
+            _defaultTypingAttributes[.font] = newValue
 
+            // apply to the document
             if !textLayoutManager.documentRange.isEmpty {
                 addAttributes([.font: newValue], range: textLayoutManager.documentRange)
+                needsLayout = true
+                needsDisplay = true
             }
 
-            typingAttributes[.font] = newValue
+            updateTypingAttributes()
         }
-    }
-
-    open func setFont(_ font: NSFont, range: NSRange) {
-        addAttributes([.font: font], range: range)
     }
 
     /// The text color of the text view.
-    @objc dynamic open var textColor: NSColor? {
+    ///
+    /// Default text color.
+    @MainActor
+    @objc public var textColor: NSColor {
         get {
-            typingAttributes[.foregroundColor] as? NSColor
+            _defaultTypingAttributes[.foregroundColor] as! NSColor
         }
 
         set {
-            typingAttributes[.foregroundColor] = newValue
+            _defaultTypingAttributes[.foregroundColor] = newValue
         }
     }
 
-    /// Sets the text color of characters within the specified range to the specified color.
-    open func setTextColor(_ color: NSColor?, range: NSRange) {
-        if let color {
-            addAttributes([.foregroundColor: color], range: range)
-        } else {
-            removeAttribute(.foregroundColor, range: range)
+    /// Default paragraph style.
+    @MainActor
+    @objc public var defaultParagraphStyle: NSParagraphStyle {
+        set {
+            _defaultTypingAttributes[.paragraphStyle] = newValue
+        }
+        get {
+            _defaultTypingAttributes[.paragraphStyle] as? NSParagraphStyle ?? NSParagraphStyle.default
         }
     }
 
-    /// The receiver’s default paragraph style.
-    @NSCopying @objc dynamic public var defaultParagraphStyle: NSParagraphStyle? {
-        didSet {
-            typingAttributes[.paragraphStyle] = defaultParagraphStyle ?? .default
-        }
-    }
-
-    private var defaultTypingAttributes: [NSAttributedString.Key: Any] {
-        [
-            .paragraphStyle: self.defaultParagraphStyle ?? NSParagraphStyle.default,
-            .font: NSFont.userFont(ofSize: 0) ?? .preferredFont(forTextStyle: .body),
-            .foregroundColor: NSColor.textColor
-        ]
-    }
+    /// Default typing attributes used in place of missing attributes of font, color and paragraph
+    internal var _defaultTypingAttributes: [NSAttributedString.Key: Any]
 
     /// The attributes to apply to new text that the user enters.
     ///
     /// This dictionary contains the attribute keys (and corresponding values) to apply to newly typed text.
     /// When the text view’s selection changes, the contents of the dictionary are reset automatically.
-    @objc dynamic public var typingAttributes: [NSAttributedString.Key: Any] {
-        didSet {
-            typingAttributes.merge(defaultTypingAttributes) { (current, _) in current }
-            needsLayout = true
+    @objc public internal(set) var typingAttributes: [NSAttributedString.Key: Any] {
+        get {
+            _typingAttributes.merging(_defaultTypingAttributes) { (current, _) in current }
+        }
+
+        set {
+            _typingAttributes = newValue
             needsDisplay = true
         }
     }
+
+    private var _typingAttributes: [NSAttributedString.Key: Any]
 
     internal func updateTypingAttributes(at location: NSTextLocation? = nil) {
         if let location {
@@ -179,11 +168,11 @@ import AVFoundation
     }
 
     internal func typingAttributes(at startLocation: NSTextLocation) -> [NSAttributedString.Key : Any] {
-        guard !textLayoutManager.documentRange.isEmpty else {
-            return typingAttributes
+        if textLayoutManager.documentRange.isEmpty {
+            return _defaultTypingAttributes
         }
 
-        var attrs: [NSAttributedString.Key: Any] = [:]
+        var typingAttrs: [NSAttributedString.Key: Any] = [:]
         // The attribute is derived from the previous (upstream) location,
         // except for the beginning of the document where it from whatever is at location 0
         let options: NSTextContentManager.EnumerationOptions = startLocation == textLayoutManager.documentRange.location ? [] : [.reverse]
@@ -196,21 +185,20 @@ import AVFoundation
             {
                 let offset = textContentManager.offset(from: elementRange.location, to: startLocation)
                 assert(offset != NSNotFound, "Unexpected location")
-                attrs = attributedTextElement.attributedString.attributes(at: offset + offsetDiff, effectiveRange: nil)
+                typingAttrs = attributedTextElement.attributedString.attributes(at: offset + offsetDiff, effectiveRange: nil)
             }
 
             return false
         }
 
         // fill in with missing typing attributes if needed
-        attrs.merge(defaultTypingAttributes, uniquingKeysWith: { current, _ in current})
-        return attrs
+        return typingAttrs.merging(_defaultTypingAttributes, uniquingKeysWith: { current, _ in current})
     }
 
     // line height based on current typing font and current typing paragraph
     internal var typingLineHeight: CGFloat {
-        let font = typingAttributes[.font] as? NSFont ?? self.defaultTypingAttributes[.font] as! NSFont
-        let paragraphStyle = typingAttributes[.paragraphStyle] as? NSParagraphStyle ?? self.defaultTypingAttributes[.paragraphStyle] as! NSParagraphStyle
+        let font = typingAttributes[.font] as? NSFont ?? _defaultTypingAttributes[.font] as! NSFont
+        let paragraphStyle = typingAttributes[.paragraphStyle] as? NSParagraphStyle ?? self._defaultTypingAttributes[.paragraphStyle] as! NSParagraphStyle
         let lineHeightMultiple = paragraphStyle.lineHeightMultiple.isAlmostZero() ? 1.0 : paragraphStyle.lineHeightMultiple
         return calculateDefaultLineHeight(for: font) * lineHeightMultiple
     }
@@ -227,10 +215,10 @@ import AVFoundation
 
             if let prevLocation {
                 // restore selection location
-                setSelectedTextRange(NSTextRange(location: prevLocation))
+                setSelectedTextRange(NSTextRange(location: prevLocation), updateLayout: true)
             } else {
                 // or try to set at the begining of the document
-                setSelectedTextRange(NSTextRange(location: textContentManager.documentRange.location))
+                setSelectedTextRange(NSTextRange(location: textContentManager.documentRange.location), updateLayout: true)
             }
         }
         get {
@@ -249,10 +237,10 @@ import AVFoundation
 
             if let prevLocation {
                 // restore selection location
-                setSelectedTextRange(NSTextRange(location: prevLocation))
+                setSelectedTextRange(NSTextRange(location: prevLocation), updateLayout: true)
             } else {
                 // or try to set at the begining of the document
-                setSelectedTextRange(NSTextRange(location: textContentManager.documentRange.location))
+                setSelectedTextRange(NSTextRange(location: textContentManager.documentRange.location), updateLayout: true)
             }
         }
         get {
@@ -272,11 +260,7 @@ import AVFoundation
             if textContainer.widthTracksTextView != newValue {
                 textContainer.widthTracksTextView = newValue
                 textContainer.size = NSTextContainer().size
-                if let clipView = scrollView?.contentView as? NSClipView {
-                    frame.size.width = clipView.bounds.size.width - clipView.contentInsets.horizontalInsets
-                }
                 needsLayout = true
-                needsDisplay = true
             }
         }
 
@@ -307,14 +291,8 @@ import AVFoundation
         set {
             if textContainer.heightTracksTextView != newValue {
                 textContainer.heightTracksTextView = newValue
-
                 textContainer.size = NSTextContainer().size
-                if let clipView = scrollView?.contentView as? NSClipView {
-                    frame.size.height = clipView.bounds.size.height - clipView.contentInsets.verticalInsets
-                }
-
                 needsLayout = true
-                needsDisplay = true
             }
         }
 
@@ -335,23 +313,20 @@ import AVFoundation
     }
 
     /// A Boolean that controls whether the text view highlights the currently selected line.
-    @Invalidating(.display)
+    @Invalidating(.layout)
     @objc dynamic open var highlightSelectedLine: Bool = false
 
     /// Enable to show line numbers in the gutter.
     @Invalidating(.layout)
-    open var showLineNumbers: Bool = false {
+    open var showsLineNumbers: Bool = false {
         didSet {
-            isRulerVisible = showLineNumbers
+            isGutterVisible = showsLineNumbers
         }
     }
 
     /// Gutter view
-    open var gutterView: STLineNumberRulerView? {
-        get {
-            scrollView?.verticalRulerView as? STLineNumberRulerView
-        }
-    }
+    public var gutterView: STGutterView?
+    internal var scrollViewFrameObserver: NSKeyValueObservation?
 
     /// The highlight color of the selected line.
     ///
@@ -454,7 +429,7 @@ import AVFoundation
     /// Content view. Layout fragments content.
     internal let contentView: ContentView
 
-    /// Selection highlight
+    /// Selection highlight content view.
     internal let selectionView: SelectionView
 
     /// Layout fragments decoration, custom rendering attributes
@@ -501,9 +476,11 @@ import AVFoundation
     @objc public lazy var isAutomaticQuoteSubstitutionEnabled = NSSpellChecker.isAutomaticQuoteSubstitutionEnabled
 
     /// A Boolean value that indicates whether to substitute visible glyphs for whitespace and other typically invisible characters.
-    open var showsInvisibleCharacters: Bool = false {
-        didSet {
-            textLayoutManager.invalidateLayout(for: textLayoutManager.documentRange)
+    @Invalidating(.layout, .display)
+    public var showsInvisibleCharacters: Bool = false {
+        willSet {
+            textLayoutManager.invalidateLayout(for: textLayoutManager.textViewportLayoutController.viewportRange ?? textLayoutManager.documentRange)
+            needsLayout = true
         }
     }
 
@@ -523,11 +500,6 @@ import AVFoundation
 
     /// A Boolean value that controls whether the text views sharing the receiver’s layout manager use the Font panel and Font menu.
     open var usesFontPanel: Bool = true
-
-    /// A Boolean value that controls whether the text views sharing the receiver’s layout manager use a ruler.
-    ///
-    /// true to cause text views sharing the receiver's layout manager to respond to NSRulerView client messages and to paragraph-related menu actions, and update the ruler (when visible) as the selection changes with its paragraph and tab attributes, otherwise false.
-    open var usesRuler: Bool = true
 
     /// A Boolean value indicating whether the view needs scroll to visible selection pass before it can be drawn.
     internal var needsScrollToSelection: Bool = false {
@@ -601,7 +573,6 @@ import AVFoundation
 
         textContentManager = STTextContentStorage()
         textLayoutManager = STTextLayoutManager()
-        textLayoutManager.layoutQueue = OperationQueue()
         textLayoutManager.textContainer = STTextContainer()
         textLayoutManager.textContainer?.widthTracksTextView = false
         textLayoutManager.textContainer?.heightTracksTextView = true
@@ -609,21 +580,27 @@ import AVFoundation
         textContentManager.primaryTextLayoutManager = textLayoutManager
 
         contentView = ContentView()
-        contentView.autoresizingMask = [.height, .width]
         selectionView = SelectionView()
-        selectionView.autoresizingMask = [.height, .width]
         decorationView = DecorationView(textLayoutManager: textLayoutManager)
-        decorationView.autoresizingMask = [.height, .width]
 
         allowsUndo = true
         _undoManager = CoalescingUndoManager()
 
+
         textFinder = NSTextFinder()
         textFinderClient = STTextFinderClient()
 
-        typingAttributes = [:]
+        _defaultTypingAttributes = [
+            .paragraphStyle: NSParagraphStyle.default,
+            .font: NSFont.preferredFont(forTextStyle: .body),
+            .foregroundColor: NSColor.textColor
+        ]
+
+        _typingAttributes = [:]
 
         super.init(frame: frameRect)
+
+        setSelectedTextRange(NSTextRange(location: textLayoutManager.documentRange.location), updateLayout: false)
 
         textLayoutManager.delegate = self
         textFinderClient.textView = self
@@ -633,7 +610,6 @@ import AVFoundation
         postsFrameChangedNotifications = true
 
         wantsLayer = true
-        canDrawSubviewsIntoLayer = true
         autoresizingMask = [.width, .height]
 
         textLayoutManager.textViewportLayoutController.delegate = self
@@ -665,7 +641,7 @@ import AVFoundation
         }
 
 
-        usageBoundsForTextContainerObserver = textLayoutManager.observe(\.usageBoundsForTextContainer, options: [.initial, .new]) { [weak self] textLayoutManager, change in
+        usageBoundsForTextContainerObserver = textLayoutManager.observe(\.usageBoundsForTextContainer, options: [.initial, .new]) { [weak self] _, _ in
             // FB13291926: this notification no longer works
             self?.needsUpdateConstraints = true
         }
@@ -687,6 +663,8 @@ import AVFoundation
 
     open override func resetCursorRects() {
         super.resetCursorRects()
+
+        let visibleRect = contentView.convert(contentView.visibleRect, to: self)
         if isSelectable, visibleRect != .zero {
             addCursorRect(visibleRect, cursor: .iBeam)
 
@@ -705,7 +683,7 @@ import AVFoundation
                        let linkTextRange = NSTextRange(location: startLocation, end: endLocation),
                        let linkTypographicBounds = textLayoutManager.typographicBounds(in: linkTextRange)
                     {
-                        addCursorRect(linkTypographicBounds, cursor: .pointingHand)
+                        addCursorRect(contentView.convert(linkTypographicBounds, to: self), cursor: .pointingHand)
                     } else {
                         stop.pointee = true
                     }
@@ -721,7 +699,7 @@ import AVFoundation
                        let linkTextRange = NSTextRange(location: startLocation, end: endLocation),
                        let linkTypographicBounds = textLayoutManager.typographicBounds(in: linkTextRange)
                     {
-                        addCursorRect(linkTypographicBounds, cursor: cursorValue)
+                        addCursorRect(contentView.convert(linkTypographicBounds, to: self), cursor: cursorValue)
                     } else {
                         stop.pointee = true
                     }
@@ -732,7 +710,20 @@ import AVFoundation
 
     open override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        self.updateSelectionHighlights()
+        self.updateSelectedRangeHighlight()
+        self.layoutGutter()
+        self.updateSelectedLineHighlight()
+    }
+
+    open override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(enclosingClipViewBoundsDidChange(_:)),
+            name: NSClipView.boundsDidChangeNotification,
+            object: scrollView?.contentView
+        )
     }
 
     open override func viewDidMoveToWindow() {
@@ -823,126 +814,19 @@ import AVFoundation
 
     open override func prepareContent(in rect: NSRect) {
         super.prepareContent(in: rect.inset(dy: -visibleRect.height / 2))
-        needsLayout = true
+        layoutViewport()
     }
 
-    open override func draw(_ dirtyRect: NSRect) {
-        drawBackground(in: dirtyRect)
-        super.draw(dirtyRect)
-    }
-
-    /// Draws the background of the text view.
-    open func drawBackground(in rect: NSRect) {
-        guard highlightSelectedLine,
-              textLayoutManager.textSelectionsRanges(.withoutInsertionPoints).isEmpty,
-              !textLayoutManager.insertionPointSelections.isEmpty
-        else {
-            // don't highlight when there's selection
-            return
+    /// The current selection range of the text view.
+    ///
+    /// If the length of the selection range is 0, indicating that the selection is actually an insertion point
+    public var textSelection: NSRange {
+        set {
+            setSelectedRange(newValue)
         }
 
-        drawHighlightedLine(in: rect)
-    }
-
-    private func drawHighlightedLine(in rect: NSRect) {
-
-        func drawHighlight(in fillRect: CGRect) {
-            guard let context = NSGraphicsContext.current?.cgContext else {
-                return
-            }
-
-            context.saveGState()
-            context.setFillColor(selectedLineHighlightColor.cgColor)
-            context.fill(fillRect)
-            context.restoreGState()
-        }
-
-        if textLayoutManager.documentRange.isEmpty {
-            // - empty document has no layout fragments, nothing, it's empty and has to be handled explicitly.
-            // - there's no layout fragment at the document endLocation (technically it's out of bounds), has to be handled explicitly.
-            if let selectionFrame = textLayoutManager.textSegmentFrame(at: textLayoutManager.documentRange.location, type: .standard) {
-                drawHighlight(
-                    in: CGRect(
-                        origin: CGPoint(
-                            x: bounds.minX,
-                            y: selectionFrame.origin.y
-                        ),
-                        size: CGSize(
-                            width: max(scrollView?.contentSize.width ?? 0, bounds.width),
-                            height: typingLineHeight
-                        )
-                    )
-                )
-            }
-            return
-        }
-
-        guard let viewportRange = textLayoutManager.textViewportLayoutController.viewportRange else {
-            return
-        }
-
-        // build the rectangle out of fragments rectangles
-        var combinedFragmentsRect: CGRect?
-
-        // TODO some beutiful day:
-        // Don't rely on NSTextParagraph.paragraphContentRange, but that
-        // makes tricky to get all the conditions right (especially for last line)
-        // Problem is that NSTextParagraph.rangeInElement span across two lines (eg. "abc\n" are two lines) while
-        // paragraphContentRange is just one ("abc")
-        //
-        // Another idea here is to use `textLayoutManager.textLayoutFragment(for: selectionTextRange.location)`
-        // to find the layout fragment and us its frame as highlight area. It has its issue when it comes to the
-        // extra line fragment area (sic).
-        textLayoutManager.enumerateTextLayoutFragments(in: viewportRange) { layoutFragment in
-            let contentRangeInElement = (layoutFragment.textElement as? NSTextParagraph)?.paragraphContentRange ?? layoutFragment.rangeInElement
-            for lineFragment in layoutFragment.textLineFragments {
-
-                func isLineSelected() -> Bool {
-                    textLayoutManager.textSelections.flatMap(\.textRanges).reduce(true) { partialResult, selectionTextRange in
-                        var result = true
-                        if lineFragment.isExtraLineFragment {
-                            let c1 = layoutFragment.rangeInElement.endLocation == selectionTextRange.location
-                            result = result && c1
-                        } else {
-                            let c1 = contentRangeInElement.contains(selectionTextRange)
-                            let c2 = contentRangeInElement.intersects(selectionTextRange)
-                            let c3 = selectionTextRange.contains(contentRangeInElement)
-                            let c4 = selectionTextRange.intersects(contentRangeInElement)
-                            let c5 = contentRangeInElement.endLocation == selectionTextRange.location
-                            result = result && (c1 || c2 || c3 || c4 || c5)
-                        }
-                        return partialResult && result
-                    }
-                }
-
-                if isLineSelected() {
-                    var lineFragmentFrame = layoutFragment.layoutFragmentFrame
-                    lineFragmentFrame.size.height = lineFragment.typographicBounds.height
-
-
-                    let r = CGRect(
-                        origin: CGPoint(
-                            x: bounds.minX,
-                            y: lineFragmentFrame.origin.y + lineFragment.typographicBounds.minY
-                        ),
-                        size: CGSize(
-                            width: max(scrollView?.contentSize.width ?? 0, bounds.width),
-                            height: lineFragmentFrame.height
-                        )
-                    )
-
-                    if let rect = combinedFragmentsRect {
-                        combinedFragmentsRect = rect.union(r)
-                    } else {
-                        combinedFragmentsRect = r
-                    }
-                }
-            }
-            return true
-        }
-
-        if let combinedFragmentsRect {
-            drawHighlight(in: combinedFragmentsRect.pixelAligned)
+        get {
+            selectedRange()
         }
     }
 
@@ -965,7 +849,12 @@ import AVFoundation
     }
 
     /// Add attribute. Need `needsViewportLayout = true` to reflect changes.
-    open func addAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange, updateLayout: Bool = true) {
+    open func addAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange) {
+        addAttributes(attrs, range: range, updateLayout: true)
+    }
+
+    /// Add attribute. Need `needsViewportLayout = true` to reflect changes.
+    private func addAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange, updateLayout: Bool) {
         guard let textRange = NSTextRange(range, in: textContentManager) else {
             preconditionFailure("Invalid range \(range)")
         }
@@ -975,7 +864,6 @@ import AVFoundation
 
     /// Add attribute. Need `needsViewportLayout = true` to reflect changes.
     open func addAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSTextRange, updateLayout: Bool = true) {
-
         textContentManager.performEditingTransaction {
             (textContentManager as? NSTextContentStorage)?.textStorage?.addAttributes(attrs, range: NSRange(range, in: textContentManager))
         }
@@ -986,8 +874,12 @@ import AVFoundation
         }
     }
 
-    /// Set attributes. Need `needsViewportLayout = true` to reflect changes.
-    open func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange, updateLayout: Bool = true) {
+    /// Set attributes.
+    open func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange) {
+        setAttributes(attrs, range: range, updateLayout: true)
+    }
+
+    internal func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange, updateLayout: Bool = true) {
         guard let textRange = NSTextRange(range, in: textContentManager) else {
             preconditionFailure("Invalid range \(range)")
         }
@@ -996,7 +888,7 @@ import AVFoundation
     }
 
     /// Set attributes. Need `needsViewportLayout = true` to reflect changes.
-    open func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSTextRange, updateLayout: Bool = true) {
+    internal func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSTextRange, updateLayout: Bool = true) {
 
         textContentManager.performEditingTransaction {
             (textContentManager as? NSTextContentStorage)?.textStorage?.setAttributes(attrs, range: NSRange(range, in: textContentManager))
@@ -1010,7 +902,12 @@ import AVFoundation
     }
 
     /// Set attributes. Need `needsViewportLayout = true` to reflect changes.
-    open func removeAttribute(_ attribute: NSAttributedString.Key, range: NSRange, updateLayout: Bool = true) {
+    open func removeAttribute(_ attribute: NSAttributedString.Key, range: NSRange) {
+        removeAttribute(attribute, range: range, updateLayout: true)
+    }
+
+    /// Set attributes. Need `needsViewportLayout = true` to reflect changes.
+    internal func removeAttribute(_ attribute: NSAttributedString.Key, range: NSRange, updateLayout: Bool) {
         guard let textRange = NSTextRange(range, in: textContentManager) else {
             preconditionFailure("Invalid range \(range)")
         }
@@ -1019,7 +916,7 @@ import AVFoundation
     }
 
     /// Set attributes. Need `needsViewportLayout = true` to reflect changes.
-    open func removeAttribute(_ attribute: NSAttributedString.Key, range: NSTextRange, updateLayout: Bool = true) {
+    internal func removeAttribute(_ attribute: NSAttributedString.Key, range: NSTextRange, updateLayout: Bool = true) {
 
         textContentManager.performEditingTransaction {
             (textContentManager as? NSTextContentStorage)?.textStorage?.removeAttribute(attribute, range: NSRange(range, in: textContentManager))
@@ -1032,11 +929,113 @@ import AVFoundation
         }
     }
 
-    internal func updateSelectionHighlights() {
+    // Update selected line highlight layer
+    internal func updateSelectedLineHighlight() {
+        guard highlightSelectedLine,
+              textLayoutManager.textSelectionsRanges(.withoutInsertionPoints).isEmpty,
+              !textLayoutManager.insertionPointSelections.isEmpty
+        else {
+            // don't highlight when there's selection
+            return
+        }
+
+        func layoutHighlightView(in frameRect: CGRect) {
+            let highlightView = STLineHighlightView(frame: frameRect)
+            highlightView.layer?.backgroundColor = selectedLineHighlightColor.cgColor
+            selectionView.addSubview(highlightView)
+        }
+
+        if textLayoutManager.documentRange.isEmpty {
+            // - empty document has no layout fragments, nothing, it's empty and has to be handled explicitly.
+            // - there's no layout fragment at the document endLocation (technically it's out of bounds), has to be handled explicitly.
+            if let selectionFrame = textLayoutManager.textSegmentFrame(at: textLayoutManager.documentRange.location, type: .standard) {
+                layoutHighlightView(
+                    in: CGRect(
+                        origin: CGPoint(
+                            x: selectionView.bounds.minX,
+                            y: selectionFrame.origin.y
+                        ),
+                        size: CGSize(
+                            width: selectionView.bounds.width,
+                            height: typingLineHeight
+                        )
+                    ).pixelAligned
+                )
+            }
+        } else if let viewportRange = textLayoutManager.textViewportLayoutController.viewportRange {
+            // build the rectangle out of fragments rectangles
+            var combinedFragmentsRect: CGRect?
+            
+            // TODO some beutiful day:
+            // Don't rely on NSTextParagraph.paragraphContentRange, but that
+            // makes tricky to get all the conditions right (especially for last line)
+            // Problem is that NSTextParagraph.rangeInElement span across two lines (eg. "abc\n" are two lines) while
+            // paragraphContentRange is just one ("abc")
+            //
+            // Another idea here is to use `textLayoutManager.textLayoutFragment(for: selectionTextRange.location)`
+            // to find the layout fragment and us its frame as highlight area. It has its issue when it comes to the
+            // extra line fragment area (sic).
+            textLayoutManager.enumerateTextLayoutFragments(in: viewportRange) { layoutFragment in
+                let contentRangeInElement = (layoutFragment.textElement as? NSTextParagraph)?.paragraphContentRange ?? layoutFragment.rangeInElement
+                for lineFragment in layoutFragment.textLineFragments {
+                    
+                    func isLineSelected() -> Bool {
+                        textLayoutManager.textSelections.flatMap(\.textRanges).reduce(true) { partialResult, selectionTextRange in
+                            var result = true
+                            if lineFragment.isExtraLineFragment {
+                                let c1 = layoutFragment.rangeInElement.endLocation == selectionTextRange.location
+                                result = result && c1
+                            } else {
+                                let c1 = contentRangeInElement.contains(selectionTextRange)
+                                let c2 = contentRangeInElement.intersects(selectionTextRange)
+                                let c3 = selectionTextRange.contains(contentRangeInElement)
+                                let c4 = selectionTextRange.intersects(contentRangeInElement)
+                                let c5 = contentRangeInElement.endLocation == selectionTextRange.location
+                                result = result && (c1 || c2 || c3 || c4 || c5)
+                            }
+                            return partialResult && result
+                        }
+                    }
+                    
+                    if isLineSelected() {
+                        var lineFragmentFrame = layoutFragment.layoutFragmentFrame
+                        lineFragmentFrame.size.height = lineFragment.typographicBounds.height
+                        
+                        
+                        let r = CGRect(
+                            origin: CGPoint(
+                                x: selectionView.bounds.minX,
+                                y: lineFragmentFrame.origin.y + lineFragment.typographicBounds.minY
+                            ),
+                            size: CGSize(
+                                width: selectionView.bounds.width,
+                                height: lineFragmentFrame.height
+                            )
+                        )
+                        
+                        if let rect = combinedFragmentsRect {
+                            combinedFragmentsRect = rect.union(r)
+                        } else {
+                            combinedFragmentsRect = r
+                        }
+                    }
+                }
+                return true
+            }
+            
+            if let combinedFragmentsRect {
+                layoutHighlightView(in: combinedFragmentsRect.pixelAligned)
+            }
+        }
+    }
+
+    // Update selection range highlight (on selectionView)
+    internal func updateSelectedRangeHighlight() {
         guard !textLayoutManager.textSelections.isEmpty,
             let viewportRange = textLayoutManager.textViewportLayoutController.viewportRange
         else {
             selectionView.subviews.removeAll()
+            // don't highlight when there's selection
             return
         }
 
@@ -1049,14 +1048,14 @@ import AVFoundation
             //       Clamp enumerated range to viewport range
             textLayoutManager.enumerateTextSegments(in: textRange, type: .selection, options: .rangeNotRequired) {(_, textSegmentFrame, _, _) in
 
-                let highlightFrame = textSegmentFrame.intersection(frame).pixelAligned
-                guard !highlightFrame.isNull else {
+                let selectionFrame = textSegmentFrame.intersection(frame).pixelAligned
+                guard !selectionFrame.isNull else {
                     return true
                 }
 
-                if !highlightFrame.size.width.isZero {
-                    let highlightView = HighlightView(frame: highlightFrame)
-                    selectionView.addSubview(highlightView)
+                if !selectionFrame.size.width.isZero {
+                    let selectionHighlightView = STSelectionHighlightView(frame: selectionFrame)
+                    selectionView.addSubview(selectionHighlightView)
 
                     // Remove insertion point when selection
                     removeInsertionPointView()
@@ -1076,26 +1075,21 @@ import AVFoundation
     private func _configureTextContainerSize() {
         var containerSize = textContainer.size
         if !isHorizontallyResizable {
-            containerSize.width = bounds.size.width // - _textContainerInset.width * 2
+            containerSize.width = contentView.frame.width - contentView.frame.origin.x // - _textContainerInset.width * 2
         }
 
         if !isVerticallyResizable {
-            containerSize.height = bounds.size.height // - _textContainerInset.height * 2
+            containerSize.height = contentView.frame.height - contentView.frame.origin.y // - _textContainerInset.height * 2
         }
 
         if !textContainer.size.isAlmostEqual(to: containerSize)  {
             textContainer.size = containerSize
+            logger.debug("textContainer.size (\(self.textContainer.size.width), \(self.textContainer.size.width)) \(#function)")
         }
     }
 
-    open override func setFrameOrigin(_ newOrigin: NSPoint) {
-        super.setFrameOrigin(newOrigin)
-        _configureTextContainerSize()
-    }
-
-    open override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        _configureTextContainerSize()
+    @objc internal func enclosingClipViewBoundsDidChange(_ notification: Notification) {
+        layoutGutter()
     }
 
     open override func viewDidEndLiveResize() {
@@ -1151,22 +1145,16 @@ import AVFoundation
             verticalInsets = clipView.contentInsets.verticalInsets
         }
 
-        if isHorizontallyResizable {
-            size.width = max(frame.size.width - horizontalInsets, size.width)
-        } else {
-            size.width = frame.size.width - horizontalInsets
-        }
-
-        if isVerticallyResizable {
-            // we should at least be the visible size if we're not in a clip view
-            // however the `size` may be bananas (estimated) and enlarge too much
-            // that going never going to shrink later.
-            // It is expected that vertically height going to grow and shring (that does not apply to horizontally)
-            //
-            // size.height = max(frame.size.height - verticalInsets, size.height)
-        } else {
-            size.height = frame.size.height - verticalInsets
-        }
+        // if isVerticallyResizable {
+        //     // we should at least be the visible size if we're not in a clip view
+        //     // however the `size` may be bananas (estimated) and enlarge too much
+        //     // that going never going to shrink later.
+        //     // It is expected that vertically height going to grow and shring (that does not apply to horizontally)
+        //     //
+        //     // size.height = max(frame.size.height - verticalInsets, size.height)
+        // } else {
+        //     size.height = frame.size.height - verticalInsets
+        // }
 
         // if we're in a clip view we should at be at least as big as the clip view
         if let clipView = scrollView?.contentView as? NSClipView {
@@ -1181,12 +1169,32 @@ import AVFoundation
 
         }
 
+        let gutterPadding = gutterView?.bounds.width ?? 0
+        size.width += gutterPadding
+
+        logger.debug("proposed size (\(size.width), \(size.height)) \(#function)")
+
         if !frame.size.isAlmostEqual(to: size) {
             self.setFrameSize(size)
         }
+
+        let newContentFrame = CGRect(
+            x: gutterPadding,
+            y: frame.origin.y,
+            width: frame.width - gutterPadding,
+            height: frame.height
+        )
+
+        if !newContentFrame.isAlmostEqual(to: contentView.frame) {
+            contentView.frame = newContentFrame
+            selectionView.frame = newContentFrame
+            decorationView.frame = newContentFrame
+
+            _configureTextContainerSize()
+        }
     }
 
-    private func layoutViewport() {
+    internal func layoutViewport() {
         // layoutViewport does not handle properly layout range
         // for far jump it tries to layout everything starting at location 0
         // even though viewport range is properly calculated.
@@ -1324,7 +1332,7 @@ import AVFoundation
                 with: previousStringInRange,
                 allowsTypingCoalescing: false
             )
-            textView.setSelectedTextRange(textRange)
+            textView.setSelectedTextRange(textRange, updateLayout: true)
         }
         undoManager.endUndoGrouping()
     }
@@ -1378,6 +1386,7 @@ import AVFoundation
         }
     }
 
+    @MainActor
     private func setUp(instance: some STPlugin) -> STPluginEvents {
         // unwrap any STPluginProtocol
         let events = STPluginEvents()

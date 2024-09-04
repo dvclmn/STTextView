@@ -1,6 +1,4 @@
-<p align="center">
-  <img width="64" src="https://user-images.githubusercontent.com/758033/235909140-3589bb7d-51a0-4df3-8d71-2dc30fcabc8c.png">
-</p>
+<img height="45" src="https://user-images.githubusercontent.com/758033/235909140-3589bb7d-51a0-4df3-8d71-2dc30fcabc8c.png">
 
 # STTextView
 
@@ -19,8 +17,8 @@ The component is mainly developed to serve [Swift Studio](https://swiftstudio.ap
 
 - macOS text system integration
 - Performant Text editing
-- Line numbers in a ruler view
-- Ruler Markers support
+- Display line numbers
+- Display invisible characters
 - Customization of colors and fonts
 - Toggle line wrapping on and off
 - Adjust the height of lines
@@ -29,7 +27,6 @@ The component is mainly developed to serve [Swift Studio](https://swiftstudio.ap
 - Search/Replace the text
 - Spelling and Grammar
 - Dictation
-- Display Invisible Characters
 - Customizable Completion support
 - Smooth scrolling of long content
 - LTR (Left To Right) / RTL (Right To Left) layout
@@ -45,12 +42,6 @@ The component is mainly developed to serve [Swift Studio](https://swiftstudio.ap
 ## 🤝 Support & Sponsors
 
 The financial sustainability of the project is possible thanks to the ongoing contributions from our [GitHub Sponsors](https://github.com/sponsors/krzyzanowskim)
-
-### Premium Sponsors
-
-  [Judo](https://judo.app) is a design and build tool for SwiftUI apps that writes production-ready code for you while you’re designing. Eliminate back-and-forth with developers and free them from unrewarding grunt work.
-
-[<img alt="judo.app" width="200" src="https://github-production-user-asset-6210df.s3.amazonaws.com/758033/257891209-932464f9-d756-4ddb-9946-198901ace96f.png" />](https://judo.app)
 
 ## 🗓️ Roadmap
 
@@ -171,14 +162,9 @@ textView.isHorizontallyResizable = true
 textView.highlightSelectedLine = true
 ```
 
-Add line numbers using specialized `STLineNumberRulerView` (specialized subclass of `NSRulerView`)
+Add gutter with line numbers
 
 ```swift
-let textView = STTextView()
-let scrollView = NSScrollView()
-scrollView.documentView = textView
-
-// Line numbers
 textView.showLineNumbers = true
 textView.gutterView?.drawSeparator = true
 ```
@@ -209,7 +195,8 @@ List of **TextKit 2** issues and bugs related to NSTextView and the TextKit fram
 - FB13272586: NSTextContainer.size default value is not as documented
 - [FB13290979](https://gist.github.com/krzyzanowskim/7adc5ee66be68df2f76b9752476aadfb): NSTextContainer.lineFragmentPadding does not affect end of the fragment usageBoundsForTextContainer rectangle
 - [FB13291926](https://gist.github.com/krzyzanowskim/33a2478fa2281b77816acb7a7f6f77ac): NSTextLayoutManager.usageBoundsForTextContainer observer is never trigerred
-- [FB13789916](https://gist.github.com/krzyzanowskim/340c5810fc427e346b7c4b06d46b1e10): NSTextInputClient.setMarkedText provide bogus selection range for Chinese keyboard 
+- [FB13789916](https://gist.github.com/krzyzanowskim/340c5810fc427e346b7c4b06d46b1e10): NSTextInputClient.setMarkedText provide bogus selection range for Chinese keyboard
+- [FB14700414](https://gist.github.com/krzyzanowskim/0a83eb9d5303016b277920a6b7c9f9fc): NSTextList doesn't work since macOS 14 (regression)
 
 ... I'm aware that the list of issues is not complete. I managed to workaround most of the problems in STTextView.
 

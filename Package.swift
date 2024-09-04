@@ -20,7 +20,7 @@ let package = Package(
             name: "STTextView",
             dependencies: [
                 .target(name: "STTextViewAppKit", condition: .when(platforms: [.macOS])),
-                .target(name: "STTextViewUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
+//                .target(name: "STTextViewUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
             ]
         ),
         .target(
@@ -34,25 +34,27 @@ let package = Package(
             dependencies: [
                 .target(name: "STTextViewCommon"),
                 .target(name: "STObjCLandShim", condition: .when(platforms: [.macOS])),
-                .product(name: "STTextKitPlus", package: "STTextKitPlus")
-            ]
-        ),
-        .target(
-            name: "STTextViewUIKit",
-            dependencies: [
-                .target(name: "STTextViewCommon"),
-                .target(name: "STObjCLandShim", condition: .when(platforms: [.iOS, .macCatalyst])),
                 .product(name: "STTextKitPlus", package: "STTextKitPlus"),
                 .product(name: "CoreTextSwift", package: "CoreTextSwift")
-            ],
-            swiftSettings: [
-                // .define("USE_LAYERS_FOR_GLYPHS")
             ]
         ),
+//        .target(
+//            name: "STTextViewUIKit",
+//            dependencies: [
+//                .target(name: "STTextViewCommon"),
+//                .target(name: "STObjCLandShim", condition: .when(platforms: [.iOS, .macCatalyst])),
+//                .product(name: "STTextKitPlus", package: "STTextKitPlus"),
+//                .product(name: "CoreTextSwift", package: "CoreTextSwift")
+//            ],
+//            swiftSettings: [
+//                // .define("USE_LAYERS_FOR_GLYPHS")
+//            ]
+//        ),
         .target(
             name: "STTextViewSwiftUI",
             dependencies: [
-                .target(name: "STTextViewSwiftUIAppKit", condition: .when(platforms: [.macOS]))
+                .target(name: "STTextViewSwiftUIAppKit", condition: .when(platforms: [.macOS])),
+//                .target(name: "STTextViewSwiftUIUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
             ]
         ),
         .target(
@@ -61,6 +63,12 @@ let package = Package(
                 .target(name: "STTextView")
             ]
         ),
+//        .target(
+//            name: "STTextViewSwiftUIUIKit",
+//            dependencies: [
+//                .target(name: "STTextView")
+//            ]
+//        ),
         .target(
             name: "STObjCLandShim",
             publicHeadersPath: "include"
@@ -71,11 +79,11 @@ let package = Package(
                 .target(name: "STTextViewAppKit", condition: .when(platforms: [.macOS]))
             ]
         ),
-        .testTarget(
-            name: "STTextViewUIKitTests",
-            dependencies: [
-                .target(name: "STTextViewUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
-            ]
-        )
+//        .testTarget(
+//            name: "STTextViewUIKitTests",
+//            dependencies: [
+//                .target(name: "STTextViewUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
+//            ]
+//        )
     ]
 )

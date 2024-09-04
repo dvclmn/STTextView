@@ -178,7 +178,7 @@ extension STTextView: NSTextInputClient {
 
         var rect: CGRect = .zero
         textLayoutManager.enumerateTextSegments(in: textRange, type: .standard, options: .rangeNotRequired) { _, textSegmentFrame, baselinePosition, textContainer in
-            rect = window!.convertToScreen(convert(textSegmentFrame, to: nil))
+            rect = window!.convertToScreen(contentView.convert(textSegmentFrame, to: nil))
             return false
         }
 
@@ -186,7 +186,7 @@ extension STTextView: NSTextInputClient {
     }
 
     @objc public func characterIndex(for point: CGPoint) -> Int {
-        let eventPoint = convert(window!.convertPoint(fromScreen: point), from: nil)
+        let eventPoint = contentView.convert(window!.convertPoint(fromScreen: point), from: nil)
         guard let location = textLayoutManager.location(interactingAt: eventPoint, inContainerAt: textLayoutManager.documentRange.location) else {
             return NSNotFound
         }
@@ -201,6 +201,7 @@ extension STTextView: NSTextInputClient {
 
         if replacementRange == .notFound {
             textRanges = textLayoutManager.textSelections.flatMap(\.textRanges)
+            assert(!textRanges.isEmpty, "Unknown selection range to insert")
         }
 
         let replacementTextRange = NSTextRange(replacementRange, in: textContentManager)
@@ -212,10 +213,12 @@ extension STTextView: NSTextInputClient {
         case let string as String:
             if shouldChangeText(in: textRanges, replacementString: string) {
                 replaceCharacters(in: textRanges, with: string, useTypingAttributes: true, allowsTypingCoalescing: true)
+                updateTypingAttributes()
             }
         case let attributedString as NSAttributedString:
             if shouldChangeText(in: textRanges, replacementString: attributedString.string) {
                 replaceCharacters(in: textRanges, with: attributedString, allowsTypingCoalescing: true)
+                updateTypingAttributes()
             }
         default:
             assertionFailure()

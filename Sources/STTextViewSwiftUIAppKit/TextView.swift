@@ -6,82 +6,99 @@ import SwiftUI
 import STTextView
 
 /// This SwiftUI view can be used to view and edit rich text.
-@MainActor @preconcurrency
-public struct TextView: SwiftUI.View {
+//@MainActor @preconcurrency
+//public struct TextView: SwiftUI.View, TextViewModifier {
+//
+//    @frozen
+//    public struct Options: OptionSet {
+//        public let rawValue: Int
+//
+//        public init(rawValue: Int) {
+//            self.rawValue = rawValue
+//        }
+//
+//        /// Breaks the text as needed to fit within the bounding box.
+//        public static let wrapLines = Options(rawValue: 1 << 0)
+//
+//        /// Highlighted selected line
+//        public static let highlightSelectedLine = Options(rawValue: 1 << 1)
+//
+//        /// Enable to show line numbers in the gutter.
+//        public static let showLineNumbers = Options(rawValue: 1 << 2)
+//    }
+//
+//    @Environment(\.colorScheme) private var colorScheme
+//    @Binding private var text: AttributedString
+//    @Binding private var selection: NSRange?
+//    private let options: Options
+//    private let plugins: [any STPlugin]
+//    var height: (CGFloat) -> Void
+//
+//    /// Create a text edit view with a certain text that uses a certain options.
+//    /// - Parameters:
+//    ///   - text: The attributed string content
+//    ///   - options: Editor options
+//    ///   - plugins: Editor plugins
+//    public init(
+//        text: Binding<AttributedString>,
+//        selection: Binding<NSRange?> = .constant(nil),
+//        options: Options = [],
+//        plugins: [any STPlugin] = [],
+//        height: @escaping (CGFloat) -> Void
+//    ) {
+//        _text = text
+//        _selection = selection
+//        self.options = options
+//        self.plugins = plugins
+//        self.height = height
+//    }
+//
+//    public var body: some View {
+//        TextViewRepresentable(
+//            text: $text,
+//            selection: $selection,
+//            options: options,
+//            plugins: plugins
+//        ) { height in
+//            
+//        }
+//        .background(.background)
+//    }
+//}
 
-    @frozen
-    public struct Options: OptionSet {
-        public let rawValue: Int
-
-        public init(rawValue: Int) {
-            self.rawValue = rawValue
-        }
-
-        /// Breaks the text as needed to fit within the bounding box.
-        public static let wrapLines = Options(rawValue: 1 << 0)
-
-        /// Highlighted selected line
-        public static let highlightSelectedLine = Options(rawValue: 1 << 1)
-    }
-
-    @Environment(\.colorScheme) private var colorScheme
-    @Binding private var text: AttributedString
-    @Binding private var selection: NSRange?
-    private let options: Options
-    private let plugins: [any STPlugin]
-
-    /// Create a text edit view with a certain text that uses a certain options.
-    /// - Parameters:
-    ///   - text: The attributed string content
-    ///   - options: Editor options
-    ///   - plugins: Editor plugins
-    public init(
-        text: Binding<AttributedString>,
-        selection: Binding<NSRange?> = .constant(nil),
-        options: Options = [],
-        plugins: [any STPlugin] = []
-    ) {
-        _text = text
-        _selection = selection
-        self.options = options
-        self.plugins = plugins
-    }
-
-    public var body: some View {
-        TextViewRepresentable(
-            text: $text,
-            selection: $selection,
-            options: options,
-            plugins: plugins
-        )
-        .background(.background)
-    }
-}
-
-private struct TextViewRepresentable: NSViewRepresentable {
+public struct TextViewRepresentable: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.font) private var font
     @Environment(\.lineSpacing) private var lineSpacing
 
     @Binding private var text: AttributedString
     @Binding private var selection: NSRange?
-    private let options: TextView.Options
+//    private let options: TextView.Options
     private var plugins: [any STPlugin]
+    var height: (CGFloat) -> Void
 
-    init(text: Binding<AttributedString>, selection: Binding<NSRange?>, options: TextView.Options, plugins: [any STPlugin] = []) {
+    public init(
+        text: Binding<AttributedString>,
+        selection: Binding<NSRange?>,
+//        options: TextView.Options,
+        plugins: [any STPlugin] = [],
+        height: @escaping (CGFloat) -> Void
+    ) {
         self._text = text
         self._selection = selection
-        self.options = options
+//        self.options = options
         self.plugins = plugins
+        self.height = height
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    public func makeNSView(context: Context) -> NSScrollView {
         let scrollView = STTextView.scrollableTextView()
         let textView = scrollView.documentView as! STTextView
         textView.textDelegate = context.coordinator
-        textView.highlightSelectedLine = options.contains(.highlightSelectedLine)
-        textView.widthTracksTextView = options.contains(.wrapLines)
-        textView.setSelectedRange(NSRange())
+        textView.highlightSelectedLine = false
+        textView.isHorizontallyResizable = true
+        textView.showsLineNumbers = false
+        textView.textSelection = NSRange()
 
         context.coordinator.isUpdating = true
         textView.attributedText = NSAttributedString(styledAttributedString(textView.typingAttributes))
@@ -94,7 +111,7 @@ private struct TextViewRepresentable: NSViewRepresentable {
         return scrollView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+    public func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
 
         let textView = scrollView.documentView as! STTextView
@@ -108,8 +125,8 @@ private struct TextViewRepresentable: NSViewRepresentable {
             context.coordinator.isDidChangeText = false
         }
 
-        if textView.selectedRange() != selection, let selection {
-            textView.setSelectedRange(selection)
+        if textView.textSelection != selection, let selection {
+            textView.textSelection = selection
         }
 
         if textView.isEditable != isEnabled {
@@ -120,17 +137,15 @@ private struct TextViewRepresentable: NSViewRepresentable {
             textView.isSelectable = isEnabled
         }
 
-        let wrapLines = options.contains(.wrapLines)
-        if wrapLines != textView.widthTracksTextView {
-            textView.widthTracksTextView = options.contains(.wrapLines)
-        }
-
         if textView.font != font {
             textView.font = font
         }
+
+        textView.needsLayout = true
+        textView.needsDisplay = true
     }
 
-    func makeCoordinator() -> TextCoordinator {
+    public func makeCoordinator() -> TextCoordinator {
         TextCoordinator(parent: self)
     }
 
@@ -150,7 +165,7 @@ private struct TextViewRepresentable: NSViewRepresentable {
         return text
     }
 
-    class TextCoordinator: STTextViewDelegate {
+    public class TextCoordinator: STTextViewDelegate {
         var parent: TextViewRepresentable
         var isUpdating: Bool = false
         var isDidChangeText: Bool = false
@@ -160,21 +175,23 @@ private struct TextViewRepresentable: NSViewRepresentable {
             self.parent = parent
         }
 
-        func textViewDidChangeText(_ notification: Notification) {
+        public func textViewDidChangeText(_ notification: Notification) {
             guard let textView = notification.object as? STTextView else {
                 return
             }
 
             if !isUpdating {
-                let newTextValue = AttributedString(textView.attributedString())
+                let newTextValue = AttributedString(textView.attributedText ?? NSAttributedString())
                 DispatchQueue.main.async {
                     self.isDidChangeText = true
                     self.parent.text = newTextValue
+                    
+                    self.parent.height(textView.textLayoutManager.usageBoundsForTextContainer.height)
                 }
             }
         }
 
-        func textViewDidChangeSelection(_ notification: Notification) {
+        public func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? STTextView else {
                 return
             }

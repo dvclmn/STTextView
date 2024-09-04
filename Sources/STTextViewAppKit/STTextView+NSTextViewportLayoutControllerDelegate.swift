@@ -13,7 +13,8 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
         let minX: CGFloat
         let maxX: CGFloat
 
-        let visibleRect = scrollView?.documentVisibleRect ?? self.visibleRect
+        // FIXME: take gutter into account
+        let visibleRect = scrollView?.documentVisibleRect ?? contentView.visibleRect
 
         if !overdrawRect.isEmpty, overdrawRect.intersects(visibleRect) {
             // Use preparedContentRect for vertical overdraw and ensure visibleRect is included at the minimum,
@@ -42,16 +43,25 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
     }
 
     public func textViewportLayoutController(_ textViewportLayoutController: NSTextViewportLayoutController, configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment) {
-        let fragmentView = fragmentViewMap.object(forKey: textLayoutFragment) ?? STTextLayoutFragmentView(layoutFragment: textLayoutFragment, frame: textLayoutFragment.layoutFragmentFrame.pixelAligned)
+        if let textLayoutFragment = textLayoutFragment as? STTextLayoutFragment,
+           textLayoutFragment.showsInvisibleCharacters != showsInvisibleCharacters
+        {
+            textLayoutFragment.showsInvisibleCharacters = showsInvisibleCharacters
+        }
+
+        let fragmentView: STTextLayoutFragmentView
+        if let cachedFragmentView = fragmentViewMap.object(forKey: textLayoutFragment) {
+            cachedFragmentView.layoutFragment = textLayoutFragment
+            fragmentView = cachedFragmentView
+        } else {
+            fragmentView = STTextLayoutFragmentView(layoutFragment: textLayoutFragment, frame: textLayoutFragment.layoutFragmentFrame.pixelAligned)
+        }
+
         // Adjust position
         if !fragmentView.frame.isAlmostEqual(to: textLayoutFragment.layoutFragmentFrame.pixelAligned)  {
             fragmentView.frame = textLayoutFragment.layoutFragmentFrame.pixelAligned
             fragmentView.needsLayout = true
             fragmentView.needsDisplay = true
-        }
-
-        if let textLayoutFragment = textLayoutFragment as? STTextLayoutFragment {
-            textLayoutFragment.showsInvisibleCharacters = showsInvisibleCharacters
         }
 
         contentView.addSubview(fragmentView)
@@ -60,9 +70,10 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
 
     public func textViewportLayoutControllerDidLayout(_ textViewportLayoutController: NSTextViewportLayoutController) {
         sizeToFit()
-        updateSelectionHighlights()
+        updateSelectedRangeHighlight()
+        layoutGutter()
+        updateSelectedLineHighlight()
         adjustViewportOffsetIfNeeded()
-        scrollView?.verticalRulerView?.needsLayout = true
 
         if let viewportRange = textViewportLayoutController.viewportRange {
             for events in plugins.events {

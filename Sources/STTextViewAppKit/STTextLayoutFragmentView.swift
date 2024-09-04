@@ -6,7 +6,12 @@ import CoreGraphics
 import STTextKitPlus
 
 final class STTextLayoutFragmentView: NSView {
-    private let layoutFragment: NSTextLayoutFragment
+    var layoutFragment: NSTextLayoutFragment {
+        didSet {
+            needsDisplay = true
+            needsLayout = true
+        }
+    }
 
     override var isFlipped: Bool {
         #if os(macOS)
@@ -20,6 +25,9 @@ final class STTextLayoutFragmentView: NSView {
         self.layoutFragment = layoutFragment
         super.init(frame: frame)
         wantsLayer = true
+        clipsToBounds = false // allow overdraw invisible characters
+        // layer?.backgroundColor = NSColor.red.withAlphaComponent(0.2).cgColor
+
         needsDisplay = true
     }
 
@@ -29,8 +37,10 @@ final class STTextLayoutFragmentView: NSView {
 
     override func draw(_ dirtyRect: CGRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
         layoutFragment.draw(at: .zero, in: context)
         drawSpellCheckerAttributes(dirtyRect, in: context)
+        context.restoreGState()
     }
 
     override func layout() {
