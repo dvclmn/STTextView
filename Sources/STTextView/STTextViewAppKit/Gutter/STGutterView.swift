@@ -2,7 +2,6 @@
 //  https://github.com/krzyzanowskim/STTextView/blob/main/LICENSE.md
 
 import AppKit
-import STTextViewCommon
 
 /// A gutter to the side of a scroll view’s document view.
 public final class STGutterView: NSView {

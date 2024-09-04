@@ -2,7 +2,6 @@
 //  https://github.com/krzyzanowskim/STTextView/blob/main/LICENSE.md
 
 import AppKit
-import STTextViewCommon
 
 extension STTextView: NSTextInputClient {
 

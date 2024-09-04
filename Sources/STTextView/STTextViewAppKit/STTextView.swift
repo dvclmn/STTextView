@@ -20,7 +20,6 @@
 
 import AppKit
 import STTextKitPlus
-import STTextViewCommon
 import AVFoundation
 
 /// A TextKit2 text view without NSTextView baggage
