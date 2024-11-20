@@ -36,8 +36,6 @@ public struct TextViewRepresentable: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.showsLineNumbers = false
         textView.textSelection = NSRange()
-        textView.textContainer.lineFragmentPadding = 30
-        
         
         context.coordinator.isUpdating = true
         textView.attributedText = NSAttributedString(styledAttributedString(textView.typingAttributes))

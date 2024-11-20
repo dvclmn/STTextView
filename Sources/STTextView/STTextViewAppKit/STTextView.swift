@@ -56,7 +56,7 @@ import AVFoundation
         }
     }
 
-    @objc public let isRichText: Bool = true
+    @objc public let isRichText: Bool = false
     @objc public let isFieldEditor: Bool = false
     @objc public let importsGraphics: Bool = false
 
@@ -1159,8 +1159,8 @@ import AVFoundation
         // size.width += textContainerInset.width * 2;
         // size.height += textContainerInset.height * 2;
 
-        var horizontalInsets: CGFloat = 30
-        var verticalInsets: CGFloat = 30
+        var horizontalInsets: CGFloat = 0
+        var verticalInsets: CGFloat = 0
         
         if let clipView = scrollView?.contentView as? NSClipView {
             horizontalInsets = clipView.contentInsets.horizontalInsets
